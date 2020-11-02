@@ -1,7 +1,7 @@
 # https://www.gnu.org/software/autoconf-archive/The-Macros.html#The-Macros
 AC_INIT([exaFMM], [2.0])
 AC_CONFIG_AUX_DIR([build-aux])
-AC_CONFIG_FILES([Makefile examples/Makefile wrappers/Makefile hss/Makefile])
+AC_CONFIG_FILES([Makefile examples/Makefile wrappers/Makefile uniform/Makefile hss/Makefile])
 AC_CONFIG_HEADER(config.h)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([examples/fmm.cxx])
@@ -29,6 +29,13 @@ if test "$with_tbb" = "yes"; then
    AC_DEFINE(EXAFMM_WITH_TBB,1,[Use Intel TBB])
 fi
 AM_CONDITIONAL(EXAFMM_WITH_TBB, test "$with_tbb" = "yes")
+
+# Intel Cilk
+AC_ARG_WITH(cilk, [AC_HELP_STRING([--with-cilk],[use Intel Cilk])], with_cilk=$withval, with_cilk=no)
+if test "$with_cilk" = "yes"; then
+   AC_DEFINE(EXAFMM_WITH_CILK,1,[Use Intel Cilk])
+fi
+AM_CONDITIONAL(EXAFMM_WITH_CILK, test "$with_cilk" = "yes")
 
 # MassiveThreads
 AC_ARG_WITH(mthread, [AC_HELP_STRING([--with-mthread],[use MassiveThreads])], with_mthread=$withval, with_mthread=no)
@@ -220,6 +227,7 @@ AC_MSG_NOTICE([FCFLAGS  : $COMPILER_FCFLAGS])
 
 AM_CONDITIONAL(EXAFMM_HAVE_BG, test "$ax_cv_cxx_compiler_vendor" = "ibm")
 AM_CONDITIONAL(EXAFMM_HAVE_FX, test "$ax_cv_cxx_compiler_vendor" = "fujitsu")
+AM_CONDITIONAL(EXAFMM_HAVE_SX, test "$ax_cv_cxx_compiler_vendor" = "nec")
 AM_CONDITIONAL(EXAFMM_HAVE_CRAY, test "$CXX" = "CC")
 AM_CONDITIONAL(EXAFMM_HAVE_INTEL, test "$ax_cv_cxx_compiler_vendor" = "intel")
 AM_CONDITIONAL(EXAFMM_HAVE_CLANG, test "$ax_cv_cxx_compiler_vendor" = "clang")

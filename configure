@@ -595,6 +595,8 @@ EXAFMM_HAVE_INTEL_FALSE
 EXAFMM_HAVE_INTEL_TRUE
 EXAFMM_HAVE_CRAY_FALSE
 EXAFMM_HAVE_CRAY_TRUE
+EXAFMM_HAVE_SX_FALSE
+EXAFMM_HAVE_SX_TRUE
 EXAFMM_HAVE_FX_FALSE
 EXAFMM_HAVE_FX_TRUE
 EXAFMM_HAVE_BG_FALSE
@@ -654,6 +656,8 @@ EXAFMM_WITH_STRUMPACK_FALSE
 EXAFMM_WITH_STRUMPACK_TRUE
 EXAFMM_WITH_MTHREAD_FALSE
 EXAFMM_WITH_MTHREAD_TRUE
+EXAFMM_WITH_CILK_FALSE
+EXAFMM_WITH_CILK_TRUE
 EXAFMM_WITH_TBB_FALSE
 EXAFMM_WITH_TBB_TRUE
 EXAFMM_HAVE_OPENMP_FALSE
@@ -737,7 +741,6 @@ infodir
 docdir
 oldincludedir
 includedir
-runstatedir
 localstatedir
 sharedstatedir
 sysconfdir
@@ -765,6 +768,7 @@ enable_maintainer_mode
 enable_dependency_tracking
 enable_openmp
 with_tbb
+with_cilk
 with_mthread
 with_strumpack
 enable_single
@@ -839,7 +843,6 @@ datadir='${datarootdir}'
 sysconfdir='${prefix}/etc'
 sharedstatedir='${prefix}/com'
 localstatedir='${prefix}/var'
-runstatedir='${localstatedir}/run'
 includedir='${prefix}/include'
 oldincludedir='/usr/include'
 docdir='${datarootdir}/doc/${PACKAGE_TARNAME}'
@@ -1092,15 +1095,6 @@ do
   | -silent | --silent | --silen | --sile | --sil)
     silent=yes ;;
 
-  -runstatedir | --runstatedir | --runstatedi | --runstated \
-  | --runstate | --runstat | --runsta | --runst | --runs \
-  | --run | --ru | --r)
-    ac_prev=runstatedir ;;
-  -runstatedir=* | --runstatedir=* | --runstatedi=* | --runstated=* \
-  | --runstate=* | --runstat=* | --runsta=* | --runst=* | --runs=* \
-  | --run=* | --ru=* | --r=*)
-    runstatedir=$ac_optarg ;;
-
   -sbindir | --sbindir | --sbindi | --sbind | --sbin | --sbi | --sb)
     ac_prev=sbindir ;;
   -sbindir=* | --sbindir=* | --sbindi=* | --sbind=* | --sbin=* \
@@ -1238,7 +1232,7 @@ fi
 for ac_var in	exec_prefix prefix bindir sbindir libexecdir datarootdir \
 		datadir sysconfdir sharedstatedir localstatedir includedir \
 		oldincludedir docdir infodir htmldir dvidir pdfdir psdir \
-		libdir localedir mandir runstatedir
+		libdir localedir mandir
 do
   eval ac_val=\$$ac_var
   # Remove trailing slashes.
@@ -1391,7 +1385,6 @@ Fine tuning of the installation directories:
   --sysconfdir=DIR        read-only single-machine data [PREFIX/etc]
   --sharedstatedir=DIR    modifiable architecture-independent data [PREFIX/com]
   --localstatedir=DIR     modifiable single-machine data [PREFIX/var]
-  --runstatedir=DIR       modifiable per-process data [LOCALSTATEDIR/run]
   --libdir=DIR            object code libraries [EPREFIX/lib]
   --includedir=DIR        C header files [PREFIX/include]
   --oldincludedir=DIR     C header files for non-gcc [/usr/include]
@@ -1459,6 +1452,7 @@ Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
   --with-tbb              use Intel TBB
+  --with-cilk             use Intel Cilk
   --with-mthread          use MassiveThreads
   --with-strumpack        use Strumpack
 
@@ -2164,7 +2158,7 @@ ac_config_sub="$SHELL $ac_aux_dir/config.sub"  # Please don't use this var.
 ac_configure="$SHELL $ac_aux_dir/configure"  # Please don't use this var.
 
 
-ac_config_files="$ac_config_files Makefile examples/Makefile wrappers/Makefile hss/Makefile"
+ac_config_files="$ac_config_files Makefile examples/Makefile wrappers/Makefile uniform/Makefile hss/Makefile"
 
 ac_config_headers="$ac_config_headers config.h"
 
@@ -4795,6 +4789,29 @@ else
 fi
 
 
+# Intel Cilk
+
+# Check whether --with-cilk was given.
+if test "${with_cilk+set}" = set; then :
+  withval=$with_cilk; with_cilk=$withval
+else
+  with_cilk=no
+fi
+
+if test "$with_cilk" = "yes"; then
+
+$as_echo "#define EXAFMM_WITH_CILK 1" >>confdefs.h
+
+fi
+ if test "$with_cilk" = "yes"; then
+  EXAFMM_WITH_CILK_TRUE=
+  EXAFMM_WITH_CILK_FALSE='#'
+else
+  EXAFMM_WITH_CILK_TRUE='#'
+  EXAFMM_WITH_CILK_FALSE=
+fi
+
+
 # MassiveThreads
 
 # Check whether --with-mthread was given.
@@ -6416,6 +6433,14 @@ else
   EXAFMM_HAVE_FX_FALSE=
 fi
 
+ if test "$ax_cv_cxx_compiler_vendor" = "nec"; then
+  EXAFMM_HAVE_SX_TRUE=
+  EXAFMM_HAVE_SX_FALSE='#'
+else
+  EXAFMM_HAVE_SX_TRUE='#'
+  EXAFMM_HAVE_SX_FALSE=
+fi
+
  if test "$CXX" = "CC"; then
   EXAFMM_HAVE_CRAY_TRUE=
   EXAFMM_HAVE_CRAY_FALSE='#'
@@ -6598,6 +6623,10 @@ if test -z "${EXAFMM_WITH_TBB_TRUE}" && test -z "${EXAFMM_WITH_TBB_FALSE}"; then
   as_fn_error $? "conditional \"EXAFMM_WITH_TBB\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
+if test -z "${EXAFMM_WITH_CILK_TRUE}" && test -z "${EXAFMM_WITH_CILK_FALSE}"; then
+  as_fn_error $? "conditional \"EXAFMM_WITH_CILK\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
 if test -z "${EXAFMM_WITH_MTHREAD_TRUE}" && test -z "${EXAFMM_WITH_MTHREAD_FALSE}"; then
   as_fn_error $? "conditional \"EXAFMM_WITH_MTHREAD\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
@@ -6680,6 +6709,10 @@ Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${EXAFMM_HAVE_FX_TRUE}" && test -z "${EXAFMM_HAVE_FX_FALSE}"; then
   as_fn_error $? "conditional \"EXAFMM_HAVE_FX\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
+if test -z "${EXAFMM_HAVE_SX_TRUE}" && test -z "${EXAFMM_HAVE_SX_FALSE}"; then
+  as_fn_error $? "conditional \"EXAFMM_HAVE_SX\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${EXAFMM_HAVE_CRAY_TRUE}" && test -z "${EXAFMM_HAVE_CRAY_FALSE}"; then
@@ -7293,6 +7326,7 @@ do
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
     "examples/Makefile") CONFIG_FILES="$CONFIG_FILES examples/Makefile" ;;
     "wrappers/Makefile") CONFIG_FILES="$CONFIG_FILES wrappers/Makefile" ;;
+    "uniform/Makefile") CONFIG_FILES="$CONFIG_FILES uniform/Makefile" ;;
     "hss/Makefile") CONFIG_FILES="$CONFIG_FILES hss/Makefile" ;;
     "config.h") CONFIG_HEADERS="$CONFIG_HEADERS config.h" ;;
     "depfiles") CONFIG_COMMANDS="$CONFIG_COMMANDS depfiles" ;;

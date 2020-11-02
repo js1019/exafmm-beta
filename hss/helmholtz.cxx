@@ -3,7 +3,6 @@
 #include "bound_box.h"
 #include "build_tree.h"
 #include "dataset.h"
-#include "kernel.h"
 #include "logger.h"
 #include "partition.h"
 #include "traversal.h"
@@ -11,7 +10,12 @@
 #include "up_down_pass.h"
 #include "verify.h"
 #include "StrumpackDensePackage.hpp"
-using namespace exafmm_helmholtz;
+using namespace exafmm;
+#include "helmholtz_spherical_cpu.h"
+vec3 KernelBase::Xperiodic = 0;
+real_t KernelBase::eps2 = 0.0;
+complex_t KernelBase::wavek = complex_t(10.,1.) / real_t(2 * M_PI);
+
 /* Helmholtz, spherical coordinates example, 3D geometry.
  *
  * Run with mpirun -np {#processes} ./helmholtz -DgGmovx -n {matrixsize}
@@ -25,29 +29,33 @@ double elemops = 0.0;
 const complex_t I1(0.0,1.0);
 
 int main(int argc, char ** argv) {
-  const real_t cycle = 2 * M_PI;
-  const real_t eps2 = 0.0;
-  const complex_t wavek = complex_t(10.,1.) / real_t(2 * M_PI);
   Args args(argc, argv);
+  typedef exafmm::HelmholtzSphericalCPU<2*Pmax> Kernel;
+  typedef typename Kernel::Bodies Bodies;                       //!< Vector of bodies
+  typedef typename Kernel::Cells Cells;                         //!< Vector of cells
+  typedef typename Kernel::B_iter B_iter;                       //!< Iterator of body vector
+  typedef typename Kernel::C_iter C_iter;                       //!< Iterator of cell vector
+
+  const real_t cycle = 2 * M_PI;
   BaseMPI baseMPI;
   Bodies bodies, bodies2, jbodies, gbodies, buffer;
-  BoundBox boundBox;
+  BoundBox<Kernel> boundBox(args.nspawn);
   Bounds localBounds, globalBounds;
-  BuildTree localTree(args.ncrit);
-  BuildTree globalTree(1);
+  BuildTree<Kernel> localTree(args.ncrit, args.nspawn);
+  BuildTree<Kernel> globalTree(1, args.nspawn);
   Cells cells, jcells, gcells;
-  Dataset data;
-  Kernel kernel(args.P, eps2, wavek);
-  Partition partition(baseMPI);
-  Traversal traversal(kernel, args.theta, args.nspawn, args.images, args.path);
-  TreeMPI treeMPI(kernel, baseMPI, args.theta, args.images);
-  UpDownPass upDownPass(kernel);
-  Verify verify(args.path);
+  Dataset<Kernel> data;
+  Partition<Kernel> partition(baseMPI.mpirank, baseMPI.mpisize);
+  Traversal<Kernel> traversal(args.nspawn, args.images);
+  TreeMPI<Kernel> treeMPI(baseMPI.mpirank, baseMPI.mpisize, args.images);
+  UpDownPass<Kernel> upDownPass(args.theta, args.useRmax, args.useRopt);
+  Verify<Kernel> verify;
   num_threads(args.threads);
 
   int myid = baseMPI.mpirank;
   int np = baseMPI.mpisize;
 
+  Kernel::setup();
   args.numBodies /= baseMPI.mpisize;
   args.verbose &= baseMPI.mpirank == 0;
   logger::verbose = args.verbose;
@@ -74,7 +82,7 @@ int main(int argc, char ** argv) {
       localBounds = boundBox.getBounds(jbodies);
       jcells = localTree.buildTree(jbodies, buffer, localBounds);
       upDownPass.upwardPass(jcells);
-      traversal.traverse(cells, jcells, cycle, args.dual);
+      traversal.traverse(cells, jcells, cycle, args.dual, args.mutual);
     }
     upDownPass.downwardPass(cells);
 
@@ -92,6 +100,7 @@ int main(int argc, char ** argv) {
       treeMPI.shiftBodies(jbodies);
       traversal.direct(bodies, jbodies, cycle);
     }
+    traversal.normalize(bodies);
     logger::printTitle("Total runtime");
     logger::printTime("Total FMM");
     logger::stopTimer("Total Direct");
@@ -215,9 +224,9 @@ int main(int argc, char ** argv) {
 	    int globri=indxl2g_(&locri,&nb,&myrow,&IZERO,&nprow);
 	    B_iter Bi=bodies.begin()+globri-1;
 	    vec3 dX=Bi->X-Bj->X;
-	    real_t R2=norm(dX)+kernel.eps2;
+	    real_t R2=norm(dX)+Kernel::eps2;
 	    real_t R=sqrt(R2);
-	    A[i+nrows*j]=R2==0?0.0:exp(I1*(kernel.wavek)*R)/R;
+	    A[i+nrows*j]=R2==0?0.0:exp(I1*(Kernel::wavek)*R)/R;
 	  }
 	}
 	gemm('N','N',nrows,locc,n,dcomplex(1.0),A,nrows,Rglob,n,dcomplex(0.0),&Sr[r],locr);
@@ -256,7 +265,7 @@ int main(int argc, char ** argv) {
 	  jcells = localTree.buildTree(jbodies, buffer, localBounds);
           upDownPass.upwardPass(cells);
           upDownPass.upwardPass(jcells);
-          traversal.traverse(cells, jcells, cycle, args.dual);
+          traversal.traverse(cells, jcells, cycle, args.dual, false);
           upDownPass.downwardPass(cells);
 #endif
           for(B_iter Bi=bodies.begin(); Bi!=bodies.end(); Bi++) {
@@ -311,9 +320,9 @@ int main(int argc, char ** argv) {
 	    int globri=indxl2g_(&locri,&nb,&myrow,&IZERO,&nprow);
 	    B_iter Bi=bodies.begin()+globri-1;
 	    vec3 dX=Bi->X-Bj->X;
-	    real_t R2=norm(dX)+kernel.eps2;
+	    real_t R2=norm(dX)+Kernel::eps2;
 	    real_t R=sqrt(R2);
-	    A[i+nrows*j]=R2==0?0.0:exp(I1*(kernel.wavek)*R)/R;
+	    A[i+nrows*j]=R2==0?0.0:exp(I1*(Kernel::wavek)*R)/R;
 	    A[i+nrows*j]=std::conj(A[i+nrows*j]);
 	  }
 	}
@@ -323,7 +332,7 @@ int main(int argc, char ** argv) {
       }
       A=NULL;
 #else
-      kernel.wavek = complex_t(-std::real(kernel.wavek),std::imag(kernel.wavek));
+      Kernel::wavek = complex_t(-std::real(Kernel::wavek),std::imag(Kernel::wavek));
       for(int i=0;i<locr;i++) {
         int locri=i+1;
         int globri=indxl2g_(&locri,&nb,&myrow,&IZERO,&nprow);
@@ -354,7 +363,7 @@ int main(int argc, char ** argv) {
           jcells = localTree.buildTree(jbodies, buffer, localBounds);
           upDownPass.upwardPass(cells);
           upDownPass.upwardPass(jcells);
-          traversal.traverse(cells, jcells, cycle, args.dual);
+          traversal.traverse(cells, jcells, cycle, args.dual, false);
           upDownPass.downwardPass(cells);
 #endif
           for(B_iter Bi=bodies.begin(); Bi!=bodies.end(); Bi++) {
@@ -365,7 +374,7 @@ int main(int argc, char ** argv) {
       }
       bodies = gbodies;
       jbodies = gbodies;
-      kernel.wavek = complex_t(-std::real(kernel.wavek),std::imag(kernel.wavek));
+      Kernel::wavek = complex_t(-std::real(Kernel::wavek),std::imag(Kernel::wavek));
 #endif
 
       /* Compress the random vectors */
@@ -406,7 +415,7 @@ int main(int argc, char ** argv) {
     double sumops;
     MPI_Allreduce((void*)&elemops,(void*)&sumops,IONE,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
     sumops/=1e9;
-
+  
     if(!myid)
       std::cout << "Flops in kernel evaluation (x1e9): min=" << minops << "; max=" << maxops << "; total=" << sumops << std::endl << std::endl;
 
@@ -448,7 +457,7 @@ int main(int argc, char ** argv) {
      * compute Btrue([nbA rows],:)=B*Xglob.
      *
      * Construction of Xglob: first X is gathered onto
-     * id 0, then it is broadcasted to all the processes.
+     * id 0, then it is broadcasted to all the processes. 
      */
     dcomplex *Xglob=new dcomplex[n*nrhs];
 
@@ -490,10 +499,10 @@ int main(int argc, char ** argv) {
 	    int locri=r+i+1;
 	    int globri=indxl2g_(&locri,&nb,&myrow,&IZERO,&nprow);
 	    B_iter Bi=bodies.begin()+globri-1;
-	    vec3 dX=Bi->X-Bj->X-kernel.Xperiodic;
-	    real_t R2=norm(dX)+kernel.eps2;
+	    vec3 dX=Bi->X-Bj->X-Kernel::Xperiodic;
+	    real_t R2=norm(dX)+Kernel::eps2;
 	    real_t R=sqrt(R2);
-	    A[i+nrows*j]=R2==0?0.0:exp(I1*(kernel.wavek)*R)/R;
+	    A[i+nrows*j]=R2==0?0.0:exp(I1*(Kernel::wavek)*R)/R;
 	  }
 	}
 	gemm('N','N',nrows,nrhs,n,dcomplex(1.0),A,nrows,Xglob,n,dcomplex(0.0),&Btrue[r],locr);
@@ -532,7 +541,7 @@ int main(int argc, char ** argv) {
           jcells = localTree.buildTree(jbodies, buffer, localBounds);
           upDownPass.upwardPass(cells);
           upDownPass.upwardPass(jcells);
-          traversal.traverse(cells, jcells, cycle, args.dual);
+          traversal.traverse(cells, jcells, cycle, args.dual, false);
           upDownPass.downwardPass(cells);
 #endif
           for(B_iter Bi=bodies.begin(); Bi!=bodies.end(); Bi++) {
@@ -575,7 +584,7 @@ int main(int argc, char ** argv) {
 void elements(void * obj, int *I, int *J, dcomplex *B, int *descB) {
   if(B==NULL)
     return;
-  const complex_t wavek = complex_t(10.,1.) / real_t(2 * M_PI);
+
   int ctxt=descB[1];
   int mB=descB[2];
   int nB=descB[3];
@@ -604,11 +613,12 @@ void elements(void * obj, int *I, int *J, dcomplex *B, int *descB) {
       B_iter Bi=bodies->begin()+iii-1;
       B_iter Bj=jbodies->begin()+jjj-1;
       vec3 dX=Bi->X-Bj->X;
-      real_t R2=norm(dX);
+      real_t R2=norm(dX)+Kernel::eps2;
       real_t R=sqrt(R2);
-      B[locr*(j-1)+(i-1)]=R2==0?0.0:exp(I1*wavek*R)/R;
+      B[locr*(j-1)+(i-1)]=R2==0?0.0:exp(I1*(Kernel::wavek)*R)/R;
     }
   }
 
   elemops+=16*locr*locc;
 }
+

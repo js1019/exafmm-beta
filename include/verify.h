@@ -1,14 +1,66 @@
 #ifndef verify_h
 #define verify_h
 #include "logger.h"
-#include "namespace.h"
 #include "types.h"
 
-namespace EXAFMM_NAMESPACE {
+namespace exafmm {
+  //! Equation dependent part of verification
+  template<Equation equation=Laplace>
+  class VerifyEquation {
+  public:
+    typedef std::vector<Body<equation> > Bodies;                //!< Vector of bodies
+    typedef typename Bodies::iterator B_iter;                   //!< Iterator of body vector
+    //! Get sum of scalar component of a vector of target bodies
+    double getSumScalar(Bodies & bodies) {
+      double v = 0;                                             // Initialize difference
+      for (B_iter B=bodies.begin(); B!=bodies.end(); B++) {     // Loop over bodies
+	v += B->TRG[0] * B->SRC;                                //  Sum of scalar component
+      }                                                         // End loop over bodies
+      return v;                                                 // Return difference
+    }
+  };
+
+  //! Equation dependent part of verification
+  template<>
+  class VerifyEquation<Helmholtz> {
+  public:
+    typedef std::vector<Body<Helmholtz> > Bodies;               //!< Vector of bodies
+    typedef typename Bodies::iterator B_iter;                   //!< Iterator of body vector
+    //! Get sum of scalar component of a vector of target bodies
+    double getSumScalar(Bodies & bodies) {
+      double v = 0;                                             // Initialize difference
+      for (B_iter B=bodies.begin(); B!=bodies.end(); B++) {     // Loop over bodies
+	v += std::abs(B->TRG[0] * B->SRC);                      //  Sum of scalar component
+      }                                                         // End loop over bodies
+      return v;                                                 // Return difference
+    }
+  };
+
+  //! Equation dependent part of verification
+  template<>
+  class VerifyEquation<BiotSavart> {
+  public:
+    typedef std::vector<Body<BiotSavart> > Bodies;              //!< Vector of bodies
+    typedef typename Bodies::iterator B_iter;                   //!< Iterator of body vector
+    //! Get sum of scalar component of a vector of target bodies
+    double getSumScalar(Bodies & bodies) {
+      double v = 0;                                             // Initialize difference
+      for (B_iter B=bodies.begin(); B!=bodies.end(); B++) {     // Loop over bodies
+	v += B->TRG[0];                                         //  Sum of x component
+      }                                                         // End loop over bodies
+      return v;                                                 // Return difference
+    }
+  };
+
   //! Verify results
-  class Verify {
+  template<typename Kernel>
+  class Verify : VerifyEquation<Kernel::equation> {
+  public:
     typedef std::map<uint64_t,double> Record;                   //!< Map of regression key value pair
     typedef Record::iterator R_iter;                            //!< Iterator of regression map
+    typedef typename Kernel::Bodies Bodies;                     //!< Vector of bodies
+    typedef typename Kernel::B_iter B_iter;                     //!< Iterator of body vector
+    using VerifyEquation<Kernel::equation>::getSumScalar;       //!< Get sum of scalar component of a vector of target bodies
 
   private:
     const char * path;                                          //!< Path to save files
@@ -18,25 +70,10 @@ namespace EXAFMM_NAMESPACE {
     double average, average2;                                   //!< Average for regression
 
     //! Constructor
-    Verify() : path("./"), average(0), average2(0) {}
+    Verify() : path("./"), average(0), average2(0) {} 
 
     //! Constructor with argument
-    Verify(const char * _path) : path(_path), average(0), average2(0) {}
-
-    //! Get sum of scalar component of a vector of target bodies
-    double getSumScalar(Bodies & bodies) {
-      double v = 0;                                             // Initialize difference
-      for (B_iter B=bodies.begin(); B!=bodies.end(); B++) {     // Loop over bodies
-#if EXAFMM_LAPLACE
-	v += B->TRG[0] * B->SRC;                                //  Sum of scalar component for Laplace
-#elif EXAFMM_HELMHOLTZ
-	v += std::abs(B->TRG[0] * B->SRC);                      //  Sum of scalar component for Helmholtz
-#elif EXAFMM_BIOTSAVART
-	v += B->TRG[0];                                         //  Sum of x component for Biot-Savart
-#endif
-      }                                                         // End loop over bodies
-      return v;                                                 // Return difference
-    }
+    Verify(const char * _path) : path(_path), average(0), average2(0) {} 
 
     //! Get norm of scalar component of a vector of target bodies
     double getNrmScalar(Bodies & bodies) {
@@ -163,7 +200,7 @@ namespace EXAFMM_NAMESPACE {
       R_iter R2 = record.begin();                               // Dummy iterator for record2
       if (secondValue) R2 = record2.begin();                    // Iterator for record2
       for (R_iter R=record.begin(); R!=record.end(); R++,R2++) {// Loop over regression values
-        file << R->first << " " << R->second;                   // Write key value pair
+        file << R->first << " " << R->second;                   // Write key value pair 
         if (secondValue) file << " " << R2->second;             // Write second value
         file << std::endl;                                      // End line
       }                                                         // End loop over regression values
@@ -171,11 +208,11 @@ namespace EXAFMM_NAMESPACE {
       if (!pass && verbose) {                                   // If regression failed
         if (time) std::cout << "Time regression failed: " <<    //  Print message for time regression
                     average << " / " << record[key] << std::endl;//  Print value and record
-        else {                                                  // If accuracy regression
+        else {                                                  // If accuracy regression 
           std::cout << "Accuracy regression failed: " <<        //  Print message for accuracy regression
-            average << " / " << record[key] << std::endl;       //  Print value and record
+            average << " / " << record[key] << std::endl;       //  Print value and record 
           if (secondValue) std::cout << "                            " << average2 //  Print value2
-                                     << " / " << record2[key];  //  Print record2
+                                     << " / " << record2[key];  //  Print record2 
           std::cout << std::endl;                               //  End line
         }                                                       // Endif accuracy regression
       }                                                         // Endif for failed regression

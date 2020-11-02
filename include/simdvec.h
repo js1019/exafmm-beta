@@ -1,9 +1,8 @@
 #ifndef simdvec_h
 #define simdvec_h
-#include "namespace.h"
 #include "types.h"
 
-namespace EXAFMM_NAMESPACE {
+namespace exafmm {
   template<typename T, typename B_iter, int D, int N>
   struct SIMD {
     static inline T setBody(B_iter, int) {

@@ -1,4 +1,4 @@
-SUBDIRS = examples wrappers hss
+SUBDIRS = examples wrappers uniform hss
 
 buildbot:
 	buildbot try --connect=pb --master=131.112.5.69:443 --username=exafmm --passwd=exafmm --vc=git
@@ -11,7 +11,6 @@ cleanlib:
 cleanreg:
 	@find . -name "*.reg" | xargs rm -f
 cleanall:
-	make clean
 	make cleanbin
 	make cleandat
 	make cleanlib

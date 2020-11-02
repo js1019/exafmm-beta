@@ -1,24 +1,29 @@
 #ifndef sort_h
 #define sort_h
-#include "namespace.h"
 #include "types.h"
 
-namespace EXAFMM_NAMESPACE {
+namespace exafmm {
   //! Custom radix sort for body and structures
+  template<typename Kernel>
   class Sort {
+    typedef typename Kernel::Bodies Bodies;                     //!< Vector of bodies
+    typedef typename Kernel::Cells Cells;                       //!< Vector of cells
+    typedef typename Kernel::B_iter B_iter;                     //!< Iterator of body vector
+    typedef typename Kernel::C_iter C_iter;                     //!< Iterator of cell vecto
+
   private:
     Bodies output;                                              //!< Output buffer
 
   private:
     //! Radixsorts the values using the keys
-    void radixsort(std::vector<int> & key, std::vector<int> & value, int size) {
+    void radixsort(int * key, int * value, int size) {
       const int bitStride = 8;                                  // Number of bits in one stride
       const int stride = 1 << bitStride;                        // Size of stride in decimal
       const int mask = stride - 1;                              // Mask the bits in one stride
       int maxKey = 0;                                           // Maximum value of key
       int bucket[stride];                                       // Bucket
-      std::vector<int> buffer(size);                            // Buffer for both key and value
-      std::vector<int> permutation(size);                       // Permutation index
+      int * buffer = new int [size];                            // Buffer for both key and value
+      int * permutation = new int [size];                       // Permutation index
       for (int i=0; i<size; i++)                                // Loop over keys
 	if (key[i] > maxKey)                                    //  If key is larger than maxKey
 	  maxKey = key[i];                                      //   Update maxKey per thread
@@ -41,14 +46,16 @@ namespace EXAFMM_NAMESPACE {
 	  key[i] = buffer[i] >> bitStride;                      //    Copy back from buffer and bit shift keys
 	maxKey >>= bitStride;                                   //   Bit shift maxKey
       }                                                         //  End while for bits in maxKey
+      delete[] buffer;                                          // Deallocate buffer
+      delete[] permutation;                                     // Deallocate permutation index
     }
 
   public:
     //! Sort input accoring to ibody
     Bodies ibody(Bodies & input) {
       const int size = input.size();                            // Size of bodies vector
-      std::vector<int> key(size);                               // Allocate key array
-      std::vector<int> index(size);                             // Allocate index array
+      int * key = new int [size];                               // Allocate key array
+      int * index = new int [size];                             // Allocate index array
       for (B_iter B=input.begin(); B!=input.end(); B++) {       // Loop over input bodies
 	int i = B-input.begin();                                //  Body index
 	key[i] = B->IBODY;                                      //  Copy IBODY to key array
@@ -60,14 +67,16 @@ namespace EXAFMM_NAMESPACE {
 	int i = B-output.begin();                               //  Body index
 	*B = input[index[i]];                                   //  Permute according to index
       }                                                         // End loop over output bodies
+      delete[] key;                                             // Deallocate key array
+      delete[] index;                                           // Deallocate index array
       return output;                                            // Return output
     }
 
     //! Sort input accoring to irank
     Bodies irank(Bodies & input) {
       const int size = input.size();                            // Size of bodies vector
-      std::vector<int> key(size);                               // Allocate key array
-      std::vector<int> index(size);                             // Allocate index array
+      int * key = new int [size];                               // Allocate key array
+      int * index = new int [size];                             // Allocate index array
       for (B_iter B=input.begin(); B!=input.end(); B++) {       // Loop over input bodies
 	int i = B-input.begin();                                //  Body index
 	key[i] = B->IRANK;                                      //  Copy IRANK to key array
@@ -79,6 +88,8 @@ namespace EXAFMM_NAMESPACE {
 	int i = B-output.begin();                               //  Body index
 	*B = input[index[i]];                                   //  Permute according to index
       }                                                         // End loop over output bodies
+      delete[] key;                                             // Deallocate key array
+      delete[] index;                                           // Deallocate index array
       return output;                                            // Return output
     }
 

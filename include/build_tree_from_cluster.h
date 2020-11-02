@@ -1,16 +1,21 @@
 #ifndef build_tree_from_cluster_h
 #define build_tree_from_cluster_h
 #include "build_tree.h"
-#include "namespace.h"
 
-namespace EXAFMM_NAMESPACE {
+namespace exafmm {
+  template<typename Kernel>
   class BuildTreeFromCluster {
-  private:
+    typedef typename Kernel::Bodies Bodies;                     //!< Vector of bodies
+    typedef typename Kernel::Cells Cells;                       //!< Vector of cells
+    typedef typename Kernel::B_iter B_iter;                     //!< Iterator of body vector
+    typedef typename Kernel::C_iter C_iter;                     //!< Iterator of cell vecto
     typedef std::vector<int> ints;                              //!< Vector of integer types
     typedef std::vector<vec3> vec3s;                            //!< Vector of vec3 types
 
   public:
     ints iwrap;                                                 //!< Bit flag for wrap around periodic boundary
+
+    BuildTreeFromCluster() {}                                   // Constructor
 
     //! Get number of cells (clusters) from body.ICELL
     int getNumCells(Bodies & bodies) {
@@ -36,7 +41,7 @@ namespace EXAFMM_NAMESPACE {
 	int index = B->ICELL;                                   //  Current cell index
 	if (index != icell) {                                   //  If cell index is different from the previous
 	  i++;                                                  //   Increment cell counter
-	  icell = index;                                        //   Update current cell index
+	  icell = index;                                        //   Update current cell index 
 	  Xmin[i] = B->X;                                       //   Initialize Xmin
 	}                                                       //  End if for different cell index
 	Xmin[i] = min(Xmin[i], B->X);                           //  Update Xmin
@@ -77,7 +82,7 @@ namespace EXAFMM_NAMESPACE {
 	C->X += B->X;                                           //  Accumulate body coordinates
 	numBodies++;                                            //  Increment number of bodies
       }                                                         // End loop over bodies
-      C->X /= numBodies;                                        // Divide sum by number to get average
+      C->X /= numBodies;                                        // Divide sum by number to get average 
       C->IBODY = bodies.size() - numBodies;                     // Index of first body in last cell
       C->ICELL = icell;                                         // Store cell index
       return cluster;                                           // Return cluster

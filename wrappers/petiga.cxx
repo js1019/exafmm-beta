@@ -4,14 +4,32 @@
 #include "build_tree.h"
 #include "kernel.h"
 #include "logger.h"
-#include "namespace.h"
 #include "partition.h"
 #include "traversal.h"
 #include "tree_mpi.h"
 #include "up_down_pass.h"
 #include "verify.h"
 
-namespace EXAFMM_NAMESPACE {
+namespace exafmm {
+#if EXAFMM_LAPLACE
+#if EXAFMM_CARTESIAN
+  typedef LaplaceCartesianCPU<Pmax,0> Kernel;
+#elif EXAFMM_SPHERICAL
+  typedef LaplaceSphericalCPU<Pmax> Kernel;
+#endif
+#elif EXAFMM_HELMHOLTZ
+  typedef HelmholtzSphericalCPU<2*Pmax> Kernel;
+#endif
+
+  typedef typename Kernel::Bodies Bodies;                       //!< Vector of bodies
+  typedef typename Kernel::Cells Cells;                         //!< Vector of cells
+  typedef typename Kernel::B_iter B_iter;                       //!< Iterator of body vector
+  typedef typename Kernel::C_iter C_iter;                       //!< Iterator of cell vector
+
+  vec3 KernelBase::Xperiodic = 0;
+  real_t KernelBase::eps2 = 0.0;
+  complex_t KernelBase::wavek = complex_t(0.,0.);
+
   vec3 cycles;
   Bodies buffer;
   Bounds globalBounds;
@@ -24,14 +42,13 @@ namespace EXAFMM_NAMESPACE {
   bool pass;
   Args * args;
   BaseMPI * baseMPI;
-  BoundBox * boundBox;
-  BuildTree * localTree, * globalTree;
-  Kernel * kernel;
-  Partition * partition;
-  Traversal * traversal;
-  TreeMPI * treeMPI;
-  UpDownPass * upDownPass;
-  Verify * verify;
+  BoundBox<Kernel> * boundBox;
+  BuildTree<Kernel> * localTree, * globalTree;
+  Partition<Kernel> * partition;
+  Traversal<Kernel> * traversal;
+  TreeMPI<Kernel> * treeMPI;
+  UpDownPass<Kernel> * upDownPass;
+  Verify<Kernel> * verify;
 
   void log_initialize() {
     args->verbose &= baseMPI->mpirank == 0;
@@ -55,36 +72,47 @@ namespace EXAFMM_NAMESPACE {
   extern "C" void FMM_Init(double eps2, double kreal, double kimag, int ncrit, int threads, const char * path,
                            int nb, double * xb, double * yb, double * zb, double * vb,
                            int nv, double * xv, double * yv, double * zv, double * vv) {
-    const int P = 10;
     const int nspawn = 1000;
     const int images = 0;
     const real_t theta = 0.4;
+    const bool useRmax = false;
+    const bool useRopt = false;
     const bool verbose = false;
+    KernelBase::eps2 = eps2;
+    KernelBase::wavek = complex_t(kreal, kimag);
+    Kernel::init();
 
     args = new Args;
     baseMPI = new BaseMPI;
-    boundBox = new BoundBox;
-    kernel = new Kernel(P, eps2, complex_t(kreal, kimag));
-    localTree = new BuildTree(ncrit);
-    globalTree = new BuildTree(1);
-    partition = new Partition(*baseMPI);
-    traversal = new Traversal(*kernel, theta, nspawn, images, path);
-    treeMPI = new TreeMPI(*kernel, *baseMPI, theta, images);
-    upDownPass = new UpDownPass(*kernel);
-    verify = new Verify(path);
+    boundBox = new BoundBox<Kernel>(nspawn);
+    localTree = new BuildTree<Kernel>(ncrit, nspawn);
+    globalTree = new BuildTree<Kernel>(1, nspawn);
+    partition = new Partition<Kernel>(baseMPI->mpirank, baseMPI->mpisize);
+    traversal = new Traversal<Kernel>(nspawn, images, path);
+    treeMPI = new TreeMPI<Kernel>(baseMPI->mpirank, baseMPI->mpisize, images);
+    upDownPass = new UpDownPass<Kernel>(theta, useRmax, useRopt);
+    verify = new Verify<Kernel>(path);
     num_threads(threads);
 
     args->accuracy = 1;
     args->ncrit = ncrit;
     args->distribution = "external";
     args->dual = 1;
+#if EXAFMM_LAPLACE
+    args->equation = "Laplace";
+#elif EXAFMM_HELMHOLTZ
+    args->equation = "Helmholtz";
+#endif
     args->graft = 1;
     args->images = images;
+    args->mutual = 0;
     args->numBodies = 0;
+    args->useRopt = useRopt;
     args->nspawn = nspawn;
     args->path = path;
     args->theta = theta;
     args->verbose = verbose & (baseMPI->mpirank == 0);
+    args->useRmax = useRmax;
     logger::verbose = args->verbose;
     bbodies.resize(nb);
     for (B_iter B=bbodies.begin(); B!=bbodies.end(); B++) {
@@ -109,6 +137,7 @@ namespace EXAFMM_NAMESPACE {
   }
 
   extern "C" void FMM_Finalize() {
+    Kernel::finalize();
     delete args;
     delete baseMPI;
     delete boundBox;
@@ -183,18 +212,18 @@ namespace EXAFMM_NAMESPACE {
     treeMPI->commCells();
     traversal->initListCount(bcells);
     traversal->initWeight(bcells);
-    traversal->traverse(bcells, jcells, cycles, args->dual);
+    traversal->traverse(bcells, jcells, cycles, args->dual, args->mutual);
     if (baseMPI->mpisize > 1) {
       if (args->graft) {
         treeMPI->linkLET();
         Bodies gbodies = treeMPI->root2body();
         jcells = globalTree->buildTree(gbodies, buffer, globalBounds);
         treeMPI->attachRoot(jcells);
-        traversal->traverse(bcells, jcells, cycles, args->dual);
+        traversal->traverse(bcells, jcells, cycles, args->dual, false);
       } else {
         for (int irank=0; irank<baseMPI->mpisize; irank++) {
           treeMPI->getLET(jcells, (baseMPI->mpirank+irank)%baseMPI->mpisize);
-          traversal->traverse(bcells, jcells, cycles, args->dual);
+          traversal->traverse(bcells, jcells, cycles, args->dual, false);
         }
       }
     }
@@ -228,19 +257,19 @@ namespace EXAFMM_NAMESPACE {
     treeMPI->commCells();
     traversal->initListCount(bcells);
     traversal->initWeight(bcells);
-    traversal->traverse(bcells, vcells, cycles, args->dual);
+    traversal->traverse(bcells, vcells, cycles, args->dual, args->mutual);
     if (baseMPI->mpisize > 1) {
       if (args->graft) {
         treeMPI->linkLET();
         Bodies gbodies = treeMPI->root2body();
         Cells jcells = globalTree->buildTree(gbodies, buffer, globalBounds);
         treeMPI->attachRoot(jcells);
-        traversal->traverse(bcells, jcells, cycles, args->dual);
+        traversal->traverse(bcells, jcells, cycles, args->dual, false);
       } else {
         for (int irank=0; irank<baseMPI->mpisize; irank++) {
           Cells jcells;
           treeMPI->getLET(jcells, (baseMPI->mpirank+irank)%baseMPI->mpisize);
-          traversal->traverse(bcells, jcells, cycles, args->dual);
+          traversal->traverse(bcells, jcells, cycles, args->dual, false);
         }
       }
     }
@@ -274,19 +303,19 @@ namespace EXAFMM_NAMESPACE {
     treeMPI->commCells();
     traversal->initListCount(vcells);
     traversal->initWeight(vcells);
-    traversal->traverse(vcells, bcells, cycles, args->dual);
+    traversal->traverse(vcells, bcells, cycles, args->dual, args->mutual);
     if (baseMPI->mpisize > 1) {
       if (args->graft) {
         treeMPI->linkLET();
         Bodies gbodies = treeMPI->root2body();
         Cells jcells = globalTree->buildTree(gbodies, buffer, globalBounds);
         treeMPI->attachRoot(jcells);
-        traversal->traverse(vcells, jcells, cycles, args->dual);
+        traversal->traverse(vcells, jcells, cycles, args->dual, false);
       } else {
         for (int irank=0; irank<baseMPI->mpisize; irank++) {
           Cells jcells;
           treeMPI->getLET(jcells, (baseMPI->mpirank+irank)%baseMPI->mpisize);
-          traversal->traverse(vcells, jcells, cycles, args->dual);
+          traversal->traverse(vcells, jcells, cycles, args->dual, false);
         }
       }
     }
@@ -316,18 +345,18 @@ namespace EXAFMM_NAMESPACE {
     treeMPI->commCells();
     traversal->initListCount(vcells);
     traversal->initWeight(vcells);
-    traversal->traverse(vcells, jcells, cycles, args->dual);
+    traversal->traverse(vcells, jcells, cycles, args->dual, args->mutual);
     if (baseMPI->mpisize > 1) {
       if (args->graft) {
         treeMPI->linkLET();
         Bodies gbodies = treeMPI->root2body();
         jcells = globalTree->buildTree(gbodies, buffer, globalBounds);
         treeMPI->attachRoot(jcells);
-        traversal->traverse(vcells, jcells, cycles, args->dual);
+        traversal->traverse(vcells, jcells, cycles, args->dual, false);
       } else {
         for (int irank=0; irank<baseMPI->mpisize; irank++) {
           treeMPI->getLET(jcells, (baseMPI->mpirank+irank)%baseMPI->mpisize);
-          traversal->traverse(vcells, jcells, cycles, args->dual);
+          traversal->traverse(vcells, jcells, cycles, args->dual, false);
         }
       }
     }

@@ -1,26 +1,18 @@
 -- Immediate --
 * Rank items in this list according to importance
 
-Debug images >= 3
-Remove nspawn
-.h to .cxx
-Ewald on multipoles
-Search source files for unnecessary functions
-Search TODO list and extract priority tasks
-
--- later --
-Add back time regression
-Fix parallel Biot-Savart
-Fix nightly
-Test debug option
-Remove 1e-5 from bound_box
+- Modylas
+ - Full P loop in M2L
+ - Runtime P in wrapper
+ - Ewald for periodic
 
 - PetIGA no macro
 - Helmholtz breaks for very low P
 - Helmholtz breaks for -D
 - With strumpack
+- uniform/fmm.cxx accuracy problem
 - Use EXAFMM_CLUSTER in md_distributed
-- Add kernel.cxx vec.cxx hss/laplace.cxx hss/helmholtz.cxx to nightly test
+- Add kernel.cxx vec.cxx uniform/fmm.cxx hss/laplace.cxx hss/helmholtz.cxx to nightly test
 - Full simdList, threadList, configList in nightly.py
 
 - Remove make cleanall from build
@@ -63,7 +55,6 @@ Use getIndex for NO_P2P
 Kahan + fixed precision
 Solid harmonics kernel
 FX10 sin, cos, exp intrinsic
-Use kvec3 in Biot-Savart
 
 -- driver --
 - System benchmarking, HPCC, SPEC, for CPU, GPU, MPI performance
@@ -90,14 +81,7 @@ Cartesian vs. Spherical vs. Planewave
 ORB vs. HOT
 OpenMP vs. TBB vs. Cilk vs. MThreads
 Geometric vs. Algebraic Mat-Vec
-
--- things that were removed --
-TBB, Cilk, MassiveThreads
-GPU
-2d
-Rmax
-Ropt
-Mass
+benchmark against uniform on kyoto
 
 -- documentation --
 - JOSS paper

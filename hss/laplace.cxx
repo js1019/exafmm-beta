@@ -3,7 +3,6 @@
 #include "bound_box.h"
 #include "build_tree.h"
 #include "dataset.h"
-#include "kernel.h"
 #include "logger.h"
 #include "partition.h"
 #include "traversal.h"
@@ -11,7 +10,10 @@
 #include "up_down_pass.h"
 #include "verify.h"
 #include "StrumpackDensePackage.hpp"
-using namespace exafmm_laplace;
+using namespace exafmm;
+#include "laplace_cartesian_cpu.h"
+vec3 KernelBase::Xperiodic = 0;
+real_t KernelBase::eps2 = 0.0;
 
 /* Laplace, cartesian coordinates example, 3D geometry.
  *
@@ -24,29 +26,33 @@ void elements(void *, int *, int *, double *, int *);
 double elemops = 0.0;
 
 int main(int argc, char ** argv) {
-  const real_t cycle = 2 * M_PI;
-  const real_t eps2 = 0.0;
-  const complex_t wavek = complex_t(10.,1.) / real_t(2 * M_PI);
   Args args(argc, argv);
+  typedef exafmm::LaplaceCartesianCPU<Pmax,0> Kernel; 
+  typedef typename Kernel::Bodies Bodies;                       //!< Vector of bodies
+  typedef typename Kernel::Cells Cells;                         //!< Vector of cells
+  typedef typename Kernel::B_iter B_iter;                       //!< Iterator of body vector
+  typedef typename Kernel::C_iter C_iter;                       //!< Iterator of cell vector
+
+  const real_t cycle = 2 * M_PI;
   BaseMPI baseMPI;
   Bodies bodies, bodies2, jbodies, gbodies, buffer;
-  BoundBox boundBox;
+  BoundBox<Kernel> boundBox(args.nspawn);
   Bounds localBounds, globalBounds;
-  BuildTree localTree(args.ncrit);
-  BuildTree globalTree(1);
+  BuildTree<Kernel> localTree(args.ncrit, args.nspawn);
+  BuildTree<Kernel> globalTree(1, args.nspawn);
   Cells cells, jcells, gcells;
-  Dataset data;
-  Kernel kernel(args.P, eps2, wavek);
-  Partition partition(baseMPI);
-  Traversal traversal(kernel, args.theta, args.nspawn, args.images, args.path);
-  TreeMPI treeMPI(kernel, baseMPI, args.theta, args.images);
-  UpDownPass upDownPass(kernel);
-  Verify verify(args.path);
+  Dataset<Kernel> data;
+  Partition<Kernel> partition(baseMPI.mpirank, baseMPI.mpisize);
+  Traversal<Kernel> traversal(args.nspawn, args.images);
+  TreeMPI<Kernel> treeMPI(baseMPI.mpirank, baseMPI.mpisize, args.images);
+  UpDownPass<Kernel> upDownPass(args.theta, args.useRmax, args.useRopt);
+  Verify<Kernel> verify;
   num_threads(args.threads);
 
   int myid = baseMPI.mpirank;
   int np = baseMPI.mpisize;
 
+  Kernel::setup();
   args.numBodies /= baseMPI.mpisize;
   args.verbose &= baseMPI.mpirank == 0;
   logger::verbose = args.verbose;
@@ -73,7 +79,7 @@ int main(int argc, char ** argv) {
       localBounds = boundBox.getBounds(jbodies);
       jcells = localTree.buildTree(jbodies, buffer, localBounds);
       upDownPass.upwardPass(jcells);
-      traversal.traverse(cells, jcells, cycle, args.dual);
+      traversal.traverse(cells, jcells, cycle, args.dual, args.mutual);
     }
     upDownPass.downwardPass(cells);
 
@@ -91,6 +97,7 @@ int main(int argc, char ** argv) {
       treeMPI.shiftBodies(jbodies);
       traversal.direct(bodies, jbodies, cycle);
     }
+    traversal.normalize(bodies);
     logger::printTitle("Total runtime");
     logger::printTime("Total FMM");
     logger::stopTimer("Total Direct");
@@ -265,7 +272,7 @@ int main(int argc, char ** argv) {
     double sumops;
     MPI_Allreduce((void*)&elemops,(void*)&sumops,IONE,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
     sumops/=1e9;
-
+  
     if(!myid)
       std::cout << "Flops in kernel evaluation (x1e9): min=" << minops << "; max=" << maxops << "; total=" << sumops << std::endl << std::endl;
 
@@ -364,7 +371,7 @@ int main(int argc, char ** argv) {
           }
           upDownPass.upwardPass(cells);
           upDownPass.upwardPass(jcells);
-          traversal.traverse(cells, jcells, cycle, args.dual);
+          traversal.traverse(cells, jcells, cycle, args.dual, false);
           upDownPass.downwardPass(cells);
           for(B_iter Bi=bodies.begin(); Bi!=bodies.end(); Bi++) {
             int i = Bi->IBODY;
@@ -431,9 +438,11 @@ void elements(void * obj, int *I, int *J, double *B, int *descB) {
       B_iter Bi=bodies->begin()+iii-1;
       B_iter Bj=jbodies->begin()+jjj-1;
       vec3 dX=Bi->X-Bj->X;
-      real_t R2=norm(dX);
+      real_t R2=norm(dX)+Kernel::eps2;
       B[locr*(j-1)+(i-1)]=R2==0?0.0:1.0/sqrt(R2);
     }
   }
+
   elemops+=10*locr*locc;
 }
+

@@ -1,8 +1,7 @@
 #ifndef vec_h
 #define vec_h
-#include "namespace.h"
 #include <ostream>
-#if defined __FUJITSU || defined __INTEL_COMPILER
+#if defined __sparc_v9__ || defined __INTEL_COMPILER
 #else
 #include "vectormath_trig.h"
 #include "vectormath_exp.h"
@@ -11,7 +10,7 @@
 #define EXAFMM_VEC_NEWTON 1
 #endif
 
-namespace EXAFMM_NAMESPACE {
+namespace exafmm {
 #ifndef __CUDACC__
   template<int N, typename T>
   class vec {
@@ -1479,7 +1478,7 @@ namespace EXAFMM_NAMESPACE {
   };
 #endif
 
-#if defined __FUJITSU & EXAFMM_USE_SIMD
+#if defined __sparc_v9__ & EXAFMM_USE_SIMD
 #if EXAFMM_VEC_VERBOSE
 #pragma message("Overloading vector operators for SPARC")
 #endif
